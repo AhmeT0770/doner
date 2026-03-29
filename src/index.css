@@ -361,6 +361,10 @@ h1, h2, h3, h4 {
 }
 
 /* Print Styles for 80mm Thermal Printer */
+.table-row-hover:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
 .receipt-print-wrapper {
   display: none;
 }
