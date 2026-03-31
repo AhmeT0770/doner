@@ -1,20 +1,10 @@
-import { useState, useEffect } from 'react';
-import { useCustomers } from '../hooks/useCustomers';
-import { useOrders } from '../hooks/useOrders';
-import { Link } from 'react-router-dom';
+'use client';
 
-// Mock Data for Menu
-const MENU_ITEMS = [
-  { id: 1, category: 'Dönerler', name: 'Et Döner Dürüm', desc: 'Özel lavaş arası 100gr yaprak et döner.', price: 120 },
-  { id: 2, category: 'Dönerler', name: 'Tavuk Döner Dürüm', desc: 'Hatay usulü soslu tavuk döner dürüm.', price: 80 },
-  { id: 3, category: 'Dönerler', name: 'Porsiyon Et Döner', desc: 'Pilav üstü iskender tarzı özel soslu.', price: 180 },
-  { id: 4, category: 'Dönerler', name: 'Porsiyon Tavuk Döner', desc: 'Pilav, soğan, turşu ve patates ile.', price: 140 },
-  { id: 5, category: 'İçecekler', name: 'Ayran (Büyük)', desc: 'Açık köpüklü naneli ev yapımı ayran.', price: 20 },
-  { id: 6, category: 'İçecekler', name: 'Kola', desc: '330ml Kutu Kola', price: 30 },
-  { id: 7, category: 'İçecekler', name: 'Şalgam', desc: 'Acılı/Acısız Adana Şalgamı.', price: 25 },
-  { id: 8, category: 'Yan Ürünler', name: 'Patates Kızartması', desc: 'Büyük boy çıtır patates.', price: 40 },
-  { id: 9, category: 'Yan Ürünler', name: 'Ekstra Savaş', desc: '1 Adet Lavaş', price: 10 },
-];
+import { useState, useEffect, useMemo } from 'react';
+import { useCustomers } from '@/hooks/useCustomers';
+import { useOrders } from '@/hooks/useOrders';
+import { useMenuItems } from '@/hooks/useMenuItems';
+import Link from 'next/link';
 
 interface CartItem {
   id: number;
@@ -23,9 +13,16 @@ interface CartItem {
   quantity: number;
 }
 
-function POS() {
+export default function POS() {
   const [activeCategory, setActiveCategory] = useState('Hepsi');
-  
+
+  // Menu from Supabase
+  const { activeMenuItems, loading: menuLoading } = useMenuItems();
+  const categories = useMemo(() => {
+    const cats = [...new Set(activeMenuItems.map(m => m.category))];
+    return ['Hepsi', ...cats];
+  }, [activeMenuItems]);
+
   // Customer & Caller ID State
   const { saveCustomer, getCustomer } = useCustomers();
   const { saveOrder } = useOrders();
@@ -33,7 +30,7 @@ function POS() {
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
-  
+
   // Cart State
   const [cart, setCart] = useState<CartItem[]>([]);
 
@@ -47,7 +44,6 @@ function POS() {
     if (existing) {
       setName(existing.name);
       setAddress(existing.address);
-      // Optional: highlight success
       console.log("Müşteri bulundu: ", existing.name);
     } else {
       setName('');
@@ -73,13 +69,11 @@ function POS() {
     import('socket.io-client').then(({ io }) => {
       const socket = io('http://localhost:3001');
       console.log('🔗 WebSocket Bağlanıyor...');
-      
+
       socket.on('ring', (data) => {
         console.log('🚨 Gelen Arama Sinyali:', data);
         if (data.phone) {
-          // Set the phone immediately
           setPhone(data.phone);
-          // Wait a tick for state to update, or just look it up manually here
           const existing = getCustomer(data.phone);
           if (existing) {
             setName(existing.name);
@@ -90,7 +84,6 @@ function POS() {
             setAddress('');
             console.log('Yeni müşteri aranıyor!');
           }
-          // Custom Alert / Notification
           alert(`Yeni Arama Geliyor!\nTelefon: ${data.phone}`);
         }
       });
@@ -104,7 +97,7 @@ function POS() {
   }, [getCustomer]);
 
   // Cart Functions
-  const addToCart = (item: typeof MENU_ITEMS[0]) => {
+  const addToCart = (item: { id: number; name: string; price: number }) => {
     setCart(prev => {
       const existing = prev.find(c => c.id === item.id);
       if (existing) {
@@ -130,7 +123,7 @@ function POS() {
 
   // Calculations
   const subtotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-  const tax = subtotal * 0.10; // 10% KDV
+  const tax = subtotal * 0.10;
   const total = subtotal + tax;
 
   // Checkout & Auto Print
@@ -144,10 +137,8 @@ function POS() {
       return;
     }
 
-    // Save/Update Customer automatically
     saveCustomer({ phone, name, address });
 
-    // Save Order for Admin Panel
     saveOrder({
       id: Date.now().toString(),
       timestamp: Date.now(),
@@ -159,19 +150,17 @@ function POS() {
       total
     });
 
-    // Trigger Print
     window.print();
-    
-    // Clear cart after print
+
     setCart([]);
     setPhone('');
     setName('');
     setAddress('');
   };
 
-  const filteredMenu = activeCategory === 'Hepsi' 
-    ? MENU_ITEMS 
-    : MENU_ITEMS.filter(m => m.category === activeCategory);
+  const filteredMenu = activeCategory === 'Hepsi'
+    ? activeMenuItems
+    : activeMenuItems.filter(m => m.category === activeCategory);
 
   return (
     <>
@@ -237,37 +226,31 @@ function POS() {
           <div className="glass-panel" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
             <div className="form-group">
               <label className="form-label">Telefon No</label>
-              <input 
-                type="text" 
-                className="form-input" 
-                placeholder="Örn: 05xx xxx xx xx" 
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Örn: 05xx xxx xx xx"
                 value={phone}
                 onChange={e => setPhone(e.target.value)}
               />
             </div>
-            <button className="btn btn-primary" style={{ width: '100%' }} onClick={simulateCall}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Sanal Çağrı
-            </button>
           </div>
-          
+
           <div className="form-group">
             <label className="form-label">Ad Soyad</label>
-            <input 
-              type="text" 
-              className="form-input" 
-              placeholder="Müşteri Adı" 
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Müşteri Adı"
               value={name}
               onChange={e => setName(e.target.value)}
             />
           </div>
           <div className="form-group" style={{ flex: 1 }}>
             <label className="form-label">Açık Adres</label>
-            <textarea 
-              className="form-input" 
-              placeholder="Mahalle, Sokak, No, Daire..." 
+            <textarea
+              className="form-input"
+              placeholder="Mahalle, Sokak, No, Daire..."
               style={{ height: '100px', resize: 'none' }}
               value={address}
               onChange={e => setAddress(e.target.value)}
@@ -282,7 +265,7 @@ function POS() {
               <h1 className="text-h2 title-gradient">Menü</h1>
               <p className="text-muted">Döner çeşitleri, içecekler ve tatlılar</p>
             </div>
-            <Link to="/admin" className="btn btn-secondary" style={{ padding: '0.5rem 1rem' }}>
+            <Link href="/admin" className="btn btn-secondary" style={{ padding: '0.5rem 1rem' }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '0.5rem' }}>
                 <circle cx="12" cy="12" r="3"></circle>
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -292,10 +275,10 @@ function POS() {
           </div>
 
           <div className="category-filters">
-            {['Hepsi', 'Dönerler', 'İçecekler', 'Yan Ürünler'].map(cat => (
-              <button 
+            {categories.map(cat => (
+              <button
                 key={cat}
-                className={`category-pill ${activeCategory === cat ? 'active' : ''}`} 
+                className={`category-pill ${activeCategory === cat ? 'active' : ''}`}
                 onClick={() => setActiveCategory(cat)}>
                 {cat}
               </button>
@@ -303,15 +286,17 @@ function POS() {
           </div>
 
           <div className="menu-grid">
-            {filteredMenu.map(item => (
+            {menuLoading ? (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Menü yükleniyor...</div>
+            ) : filteredMenu.map(item => (
               <div className="menu-card" key={item.id} onClick={() => addToCart(item)}>
                 <h3 className="menu-card-title">{item.name}</h3>
-                <p className="menu-card-desc">{item.desc}</p>
+                <p className="menu-card-desc">{item.description}</p>
                 <div className="menu-card-footer">
                   <span className="menu-card-price">{item.price} ₺</span>
                   <button className="menu-card-add">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </button>
                 </div>
@@ -354,7 +339,7 @@ function POS() {
               </div>
             ))}
           </div>
-          
+
           <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
               <span>Ara Toplam</span>
@@ -377,5 +362,3 @@ function POS() {
     </>
   );
 }
-
-export default POS;
